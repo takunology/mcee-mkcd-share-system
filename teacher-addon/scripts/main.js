@@ -222,6 +222,58 @@ function buildDetailBody(name) {
     return `生徒: ${name}（${byCmd.size}件）\n\n` + blocks.join("\n\n");
 }
 
+function textureForCommand(type, depth) {
+    const prefix = depth > 1 ? "loop" : "chat";
+    if (type === "move") return `textures/makecode/row_${prefix}_agent_move`;
+    if (type === "turn") return `textures/makecode/row_${prefix}_agent_turn`;
+    if (type === "setItem") return `textures/makecode/row_${prefix}_agent_hold_block`;
+    if (type === "place") return `textures/makecode/row_${prefix}_agent_put`;
+    if (type === "repeat_top") return `textures/makecode/row_${prefix}_loop_top`;
+    if (type === "repeat_bottom") return `textures/makecode/row_${prefix}_loop_bottom`;
+    return "";
+}
+
+function rowText(c) {
+    if (!c) return "";
+    if (c.type === "move") return `${dirLabel(c.direction)} ${c.blocks}`;
+    if (c.type === "turn") return turnLabel(c.direction);
+    if (c.type === "setItem") return `${blockName(c.item)} ${c.count} ${c.slot}`;
+    if (c.type === "place") return dirLabel(c.direction);
+    if (c.type === "repeat") return `${c.times}`;
+    return "";
+}
+
+function addPuzzleRows(program, depth, rows) {
+    for (const c of program || []) {
+        if (c.type === "repeat") {
+            rows.push({ text: rowText(c), texture: textureForCommand("repeat_top", depth) });
+            addPuzzleRows(c.children || [], depth + 1, rows);
+            rows.push({ text: "repeat_end", texture: textureForCommand("repeat_bottom", depth) });
+        } else {
+            rows.push({ text: rowText(c), texture: textureForCommand(c.type, depth) });
+        }
+    }
+}
+
+function buildPuzzleRows(name) {
+    const byCmd = submissions.get(name);
+    if (!byCmd || byCmd.size === 0) return null;
+
+    const rows = [];
+    for (const json of byCmd.values()) {
+        let data;
+        try {
+            data = JSON.parse(json);
+        } catch (e) {
+            continue;
+        }
+        rows.push({ text: data.command || "", texture: "textures/makecode/chat_command_top" });
+        addPuzzleRows(data.program || [], 1, rows);
+        rows.push({ text: "end", texture: "textures/makecode/chat_command_bottom" });
+    }
+    return rows;
+}
+
 function showDetail(player, name) {
     const body = buildDetailBody(name);
     if (!body) {
@@ -232,15 +284,20 @@ function showDetail(player, name) {
         return;
     }
 
+    const rows = buildPuzzleRows(name);
     const detail = new ActionFormData()
-        .title(`${name} のプログラム`)
-        .body(body)
-        .button("もどる");
+        .title(`mkcd_puzzle:${name}`)
+        .body("");
+
+    if (rows && rows.length > 0) {
+        for (const row of rows) detail.button(row.text, row.texture);
+    } else {
+        detail.body(body);
+    }
 
     showWithRetry(detail, player, 0)
         .then((res) => {
-            // 「もどる」または閉じたら一覧へ戻る
-            if (!res.canceled && res.selection === 0) openMenu(player);
+            if (!res.canceled) openMenu(player);
         })
         .catch(() => {
             for (const line of body.split("\n")) player.sendMessage(line);
