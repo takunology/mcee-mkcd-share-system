@@ -33,42 +33,45 @@ world.afterEvents.playerSpawn.subscribe((ev) => {
 // 受信: /scriptevent puzzle:submit <student>|<part>/<total>|<chunk>
 //   例: scriptevent puzzle:submit ゆうき|1/2|{"command":"run",...
 // ------------------------------------------------------------------
-system.afterEvents.scriptEventReceive.subscribe(
-    (ev) => {
-        if (ev.id !== "puzzle:submit") return;
+system.afterEvents.scriptEventReceive.subscribe((ev) => {
+    // デバッグ: あらゆる scriptevent の到達を確認(動作確認後に削除)
+    world.sendMessage(`[debug] scriptevent id=${ev.id}`);
 
-        const segs = ev.message.split("|");
-        if (segs.length < 3) return;
+    if (ev.id !== "puzzle:submit") return;
 
-        // sourceEntity があればそれを正とし、無ければメッセージ先頭の名前を使う
-        let student = segs[0];
-        if (ev.sourceEntity && ev.sourceEntity.typeId === "minecraft:player") {
-            student = ev.sourceEntity.name;
-        }
+    // sourceEntity があればそれを正とし、無ければメッセージ先頭の名前を使う
+    const srcName = ev.sourceEntity && ev.sourceEntity.typeId === "minecraft:player"
+        ? ev.sourceEntity.name
+        : null;
+    // デバッグ: 受信したか / 名前が取れるか を確認(動作確認後に削除可)
+    world.sendMessage(`[debug] recv id=${ev.id} src=${srcName || "none"}`);
 
-        const [partStr, totalStr] = segs[1].split("/");
-        const part = parseInt(partStr, 10);
-        const total = parseInt(totalStr, 10);
-        const chunk = segs.slice(2).join("|");
-        if (!part || !total) return;
+    const segs = ev.message.split("|");
+    if (segs.length < 3) return;
 
-        let buf = buffers.get(student);
-        if (!buf || buf.total !== total) {
-            buf = { total: total, parts: new Map() };
-            buffers.set(student, buf);
-        }
-        buf.parts.set(part, chunk);
+    const student = srcName || segs[0];
 
-        if (buf.parts.size === total) {
-            let json = "";
-            for (let i = 1; i <= total; i++) json += buf.parts.get(i) || "";
-            submissions.set(student, json);
-            buffers.delete(student);
-            world.sendMessage(`[受信] ${student} のプログラムを保存しました`);
-        }
-    },
-    { namespaces: ["puzzle"] }
-);
+    const [partStr, totalStr] = segs[1].split("/");
+    const part = parseInt(partStr, 10);
+    const total = parseInt(totalStr, 10);
+    const chunk = segs.slice(2).join("|");
+    if (!part || !total) return;
+
+    let buf = buffers.get(student);
+    if (!buf || buf.total !== total) {
+        buf = { total: total, parts: new Map() };
+        buffers.set(student, buf);
+    }
+    buf.parts.set(part, chunk);
+
+    if (buf.parts.size === total) {
+        let json = "";
+        for (let i = 1; i <= total; i++) json += buf.parts.get(i) || "";
+        submissions.set(student, json);
+        buffers.delete(student);
+        world.sendMessage(`[受信] ${student} のプログラムを更新しました`);
+    }
+});
 
 // ------------------------------------------------------------------
 // 表示: ブレイズロッド使用で先生メニュー
@@ -94,8 +97,12 @@ function showWithRetry(form, player, attempt) {
 }
 
 function openMenu(player) {
-    // マルチプレイ内の実プレイヤーを検知して一覧化する
-    const names = world.getAllPlayers().map((p) => p.name);
+    // マルチプレイ内の実プレイヤー + 受信済みキー を統合して一覧化する
+    // (名前解決に失敗して "me" 等で保存された提出も拾えるようにする)
+    const set = new Set();
+    for (const p of world.getAllPlayers()) set.add(p.name);
+    for (const key of submissions.keys()) set.add(key);
+    const names = Array.from(set);
 
     if (names.length === 0) {
         player.sendMessage("[先生メニュー] プレイヤーが見つかりません");
