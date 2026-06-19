@@ -122,11 +122,68 @@ function openMenu(player) {
         });
 }
 
+// 方向コードを日本語ラベルへ
+function dirLabel(d) {
+    switch (d) {
+        case "forward": return "まえ";
+        case "back": return "うしろ";
+        case "right": return "みぎ";
+        case "left": return "ひだり";
+        case "up": return "うえ";
+        case "down": return "した";
+        default: return d;
+    }
+}
+
+function turnLabel(d) {
+    return d === "right" ? "みぎ" : "ひだり";
+}
+
+// プログラムを手順の行配列に変換する(入れ子は階層ごとに半角2スペースでインデント)
+function formatSteps(program, depth, lines) {
+    const pad = "  ".repeat(depth);
+    for (const c of program) {
+        if (c.type === "move") {
+            lines.push(`${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動`);
+        } else if (c.type === "turn") {
+            lines.push(`${pad}むきを ${turnLabel(c.direction)} にかえる`);
+        } else if (c.type === "repeat") {
+            lines.push(`${pad}くりかえし ${c.times} 回:`);
+            formatSteps(c.children || [], depth + 1, lines);
+        }
+    }
+}
+
+// 保存 JSON を { title(パズル名), body(手順テキスト) } に変換する
+function describe(json) {
+    let data;
+    try {
+        data = JSON.parse(json);
+    } catch (e) {
+        return { title: "", body: json };
+    }
+    const lines = [];
+    formatSteps(data.program || [], 0, lines);
+    return {
+        title: data.command || "",
+        body: lines.length ? lines.join("\n") : "(手順なし)"
+    };
+}
+
 function showDetail(player, name) {
-    const json = submissions.get(name) || "(まだ受信していません)";
+    const json = submissions.get(name);
+    if (!json) {
+        const empty = new ActionFormData().title(name).body("(まだ受信していません)").button("もどる");
+        showWithRetry(empty, player, 0)
+            .then((res) => { if (!res.canceled && res.selection === 0) openMenu(player); })
+            .catch(() => player.sendMessage(`${name}: (まだ受信していません)`));
+        return;
+    }
+
+    const info = describe(json);
     const detail = new ActionFormData()
-        .title(`${name} のプログラム`)
-        .body(json)
+        .title(info.title || name) // パズル名(command)をタイトルに
+        .body(`生徒: ${name}\n\n${info.body}`)
         .button("もどる");
 
     showWithRetry(detail, player, 0)
@@ -135,15 +192,21 @@ function showDetail(player, name) {
             if (!res.canceled && res.selection === 0) openMenu(player);
         })
         .catch(() => {
-            player.sendMessage(`=== ${name} ===`);
-            player.sendMessage(json);
+            player.sendMessage(`=== ${info.title || name}（${name}）===`);
+            for (const line of info.body.split("\n")) player.sendMessage(line);
         });
 }
 
 function chatFallback(player, names) {
     player.sendMessage("[先生メニュー] フォームを表示できないためチャット表示します");
     for (const name of names) {
-        player.sendMessage(`--- ${name} ---`);
-        player.sendMessage(submissions.get(name) || "(まだ受信していません)");
+        const json = submissions.get(name);
+        if (!json) {
+            player.sendMessage(`--- ${name} : (まだ受信していません) ---`);
+            continue;
+        }
+        const info = describe(json);
+        player.sendMessage(`--- ${info.title || name}（${name}）---`);
+        for (const line of info.body.split("\n")) player.sendMessage(line);
     }
 }
