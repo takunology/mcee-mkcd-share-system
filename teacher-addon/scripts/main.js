@@ -21,19 +21,13 @@ const submissions = new Map();
 const buffers = new Map();
 
 // ------------------------------------------------------------------
-// デモ用ダミーデータ(MakeCode 連携が未配線でもメニューを試せるように)
+// プレイヤー検知: 参加したら通知する
 // ------------------------------------------------------------------
-function seedDummyData() {
-    submissions.set(
-        "ゆうき",
-        '{"command":"run","program":[{"type":"move","direction":"forward","blocks":3},{"type":"turn","direction":"right"}]}'
-    );
-    submissions.set(
-        "さくら",
-        '{"command":"go","program":[{"type":"repeat","times":4,"children":[{"type":"move","direction":"forward","blocks":1},{"type":"turn","direction":"right"}]}]}'
-    );
-}
-seedDummyData();
+world.afterEvents.playerSpawn.subscribe((ev) => {
+    if (ev.initialSpawn && ev.player) {
+        world.sendMessage(`[検知] ${ev.player.name} が参加しました`);
+    }
+});
 
 // ------------------------------------------------------------------
 // 受信: /scriptevent puzzle:submit <student>|<part>/<total>|<chunk>
@@ -100,23 +94,25 @@ function showWithRetry(form, player, attempt) {
 }
 
 function openMenu(player) {
-    const names = Array.from(submissions.keys());
+    // マルチプレイ内の実プレイヤーを検知して一覧化する
+    const names = world.getAllPlayers().map((p) => p.name);
 
     if (names.length === 0) {
-        player.sendMessage("[先生メニュー] まだ提出はありません");
+        player.sendMessage("[先生メニュー] プレイヤーが見つかりません");
         return;
     }
 
     const menu = new ActionFormData()
-        .title("先生メニュー: 生徒の提出")
-        .body(`提出 ${names.length} 件。生徒を選んでください。`);
-    for (const name of names) menu.button(name);
+        .title("先生メニュー: プレイヤー")
+        .body(`接続中 ${names.length} 人。✔=プログラム受信済み / —=未受信`);
+    for (const name of names) {
+        menu.button(submissions.has(name) ? `${name}  ✔` : `${name}  —`);
+    }
 
     showWithRetry(menu, player, 0)
         .then((res) => {
             if (res.canceled) return;
-            const name = names[res.selection];
-            showDetail(player, name);
+            showDetail(player, names[res.selection]);
         })
         .catch(() => {
             // フォームが使えない環境ではチャットにフォールバック
@@ -125,7 +121,7 @@ function openMenu(player) {
 }
 
 function showDetail(player, name) {
-    const json = submissions.get(name) || "(なし)";
+    const json = submissions.get(name) || "(まだ受信していません)";
     const detail = new ActionFormData()
         .title(`${name} のプログラム`)
         .body(json)
@@ -146,6 +142,6 @@ function chatFallback(player, names) {
     player.sendMessage("[先生メニュー] フォームを表示できないためチャット表示します");
     for (const name of names) {
         player.sendMessage(`--- ${name} ---`);
-        player.sendMessage(submissions.get(name) || "(なし)");
+        player.sendMessage(submissions.get(name) || "(まだ受信していません)");
     }
 }

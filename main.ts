@@ -178,6 +178,20 @@ namespace agentControl {
     }
 
     /**
+     * JSON を /scriptevent でアドオンへ送る(チャンク分割)。
+     *   scriptevent puzzle:submit <名前>|<part>/<total>|<chunk>
+     * 名前はプレースホルダ "me" を送り、アドオン側で実行プレイヤー名に置き換える。
+     */
+    function sendViaScriptEvent(json: string): void {
+        const chunkSize = 200;
+        const total = Math.ceil(json.length / chunkSize);
+        for (let i = 0; i < total; i++) {
+            const part = json.substr(i * chunkSize, chunkSize);
+            player.execute("scriptevent puzzle:submit me|" + (i + 1) + "/" + total + "|" + part);
+        }
+    }
+
+    /**
      * 提出をコマンドごとに保存する(同じコマンドは最新で上書き)
      */
     function storeSubmission(command: string, json: string): void {
@@ -209,11 +223,12 @@ namespace agentControl {
 
             handler();
 
-            // プログラム終了: 記録を止めて 保存 & JSON 出力
+            // プログラム終了: 記録を止めて 保存・出力・アドオン送信
             recording = false;
             const json = serializeProgram();
             storeSubmission(command, json);
             sayJson(json);
+            sendViaScriptEvent(json);
         });
     }
 

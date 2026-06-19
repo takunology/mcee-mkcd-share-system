@@ -1,6 +1,6 @@
 {
     "name": "puzzle-export",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "description": "生徒がブロックで作ったパズルの設計図を構造化データ(JSON)として取り出し、チャットに出力する MakeCode 拡張",
     "dependencies": {
         "core": "*"
