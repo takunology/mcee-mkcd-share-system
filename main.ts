@@ -58,10 +58,23 @@ namespace agentControl {
         }
     }
 
+    class Submission {
+        command: string;
+        json: string;
+        constructor(command: string, json: string) {
+            this.command = command;
+            this.json = json;
+        }
+    }
+
     let program: Command[] = [];
     let containerStack: Command[][] = [];
     let recording = false;
     let currentCommand = "";
+
+    // 先生メニュー用: コマンドごとの最新提出を保持する
+    let submissions: Submission[] = [];
+    let viewIndex = -1;
 
     function currentContainer(): Command[] {
         return containerStack[containerStack.length - 1];
@@ -151,10 +164,9 @@ namespace agentControl {
     }
 
     /**
-     * 記録した JSON をチャットへ分割出力する(可視出力 MVP)
+     * JSON 文字列をチャットへ分割出力する(可視出力 MVP)
      */
-    function emit(): void {
-        const json = serializeProgram();
+    function sayJson(json: string): void {
         const chunkSize = 200;
         const total = Math.ceil(json.length / chunkSize);
         player.say("PZL_BEGIN total=" + total);
@@ -163,6 +175,19 @@ namespace agentControl {
             player.say("PZL " + (i + 1) + "/" + total + " " + part);
         }
         player.say("PZL_END");
+    }
+
+    /**
+     * 提出をコマンドごとに保存する(同じコマンドは最新で上書き)
+     */
+    function storeSubmission(command: string, json: string): void {
+        for (let i = 0; i < submissions.length; i++) {
+            if (submissions[i].command == command) {
+                submissions[i].json = json;
+                return;
+            }
+        }
+        submissions.push(new Submission(command, json));
     }
 
     /**
@@ -184,9 +209,11 @@ namespace agentControl {
 
             handler();
 
-            // プログラム終了: 記録を止めて JSON 出力
+            // プログラム終了: 記録を止めて 保存 & JSON 出力
             recording = false;
-            emit();
+            const json = serializeProgram();
+            storeSubmission(command, json);
+            sayJson(json);
         });
     }
 
@@ -253,5 +280,32 @@ namespace agentControl {
                 recording = true;
             }
         }
+    }
+
+    /**
+     * 次の提出を表示する(ページめくり式)
+     */
+    function showNextSubmission(): void {
+        if (submissions.length == 0) {
+            player.say("[先生メニュー] まだ提出はありません");
+            return;
+        }
+        viewIndex = (viewIndex + 1) % submissions.length;
+        const s = submissions[viewIndex];
+        player.say("=== 先生メニュー " + (viewIndex + 1) + "/" + submissions.length + " : " + s.command + " ===");
+        sayJson(s.json);
+    }
+
+    /**
+     * ブレイズロッドを使うと、提出されたプログラム(JSON)を順に表示する。
+     * ※ MakeCode はプレイヤーごとに動くため、同じインスタンスで記録した提出のみ表示できる。
+     */
+    //% block="ブレイズロッドで先生メニューを開く"
+    //% blockId=agentTeacherMenu
+    //% weight=40
+    export function enableTeacherMenu(): void {
+        player.onItemInteracted(BLAZE_ROD, function () {
+            showNextSubmission();
+        });
     }
 }
