@@ -14,7 +14,8 @@
 import { world, system } from "@minecraft/server";
 import { ActionFormData } from "@minecraft/server-ui";
 
-// 生徒名 -> 完成した JSON 文字列
+// 生徒名 -> (コマンド名 -> 完成した JSON 文字列)
+// 1 人の生徒が複数のチャットコマンド/トリガーを持てるよう、コマンド別に保持する。
 const submissions = new Map();
 
 // 生徒名 -> 受信途中のチャンク { total, parts: Map<part, chunk> }
@@ -62,9 +63,17 @@ system.afterEvents.scriptEventReceive.subscribe((ev) => {
     if (buf.parts.size === total) {
         let json = "";
         for (let i = 1; i <= total; i++) json += buf.parts.get(i) || "";
-        submissions.set(student, json);
         buffers.delete(student);
-        world.sendMessage(`[受信] ${student} のプログラムを更新しました`);
+
+        // JSON 内の command(パズル名)をキーにして、コマンド別に保存する
+        let command = "";
+        try { command = JSON.parse(json).command || ""; } catch (e) { command = ""; }
+
+        let byCmd = submissions.get(student);
+        if (!byCmd) { byCmd = new Map(); submissions.set(student, byCmd); }
+        byCmd.set(command, json);
+
+        world.sendMessage(`[受信] ${student} の「${command}」を更新しました`);
     }
 });
 
@@ -106,9 +115,11 @@ function openMenu(player) {
 
     const menu = new ActionFormData()
         .title("先生メニュー: プレイヤー")
-        .body(`接続中 ${names.length} 人\n[済]=プログラム受信済み / [未]=未受信`);
+        .body(`接続中 ${names.length} 人\n数字 = 受信したプログラム数 / [未] = 未受信`);
     for (const name of names) {
-        menu.button(submissions.has(name) ? `${name}  [済]` : `${name}  [未]`);
+        const byCmd = submissions.get(name);
+        const count = byCmd ? byCmd.size : 0;
+        menu.button(count > 0 ? `${name}  [${count}件]` : `${name}  [未]`);
     }
 
     showWithRetry(menu, player, 0)
@@ -180,9 +191,21 @@ function describe(json) {
     };
 }
 
+// 生徒の全プログラムを、かたまりごとに空白行で区切った 1 つのテキストにまとめる
+function buildDetailBody(name) {
+    const byCmd = submissions.get(name);
+    if (!byCmd || byCmd.size === 0) return null;
+    const blocks = [];
+    for (const json of byCmd.values()) {
+        blocks.push(describe(json).body);
+    }
+    // プログラムのかたまりの間を空白行(空行)で区切る
+    return `生徒: ${name}（${byCmd.size}件）\n\n` + blocks.join("\n\n");
+}
+
 function showDetail(player, name) {
-    const json = submissions.get(name);
-    if (!json) {
+    const body = buildDetailBody(name);
+    if (!body) {
         const empty = new ActionFormData().title(name).body("(まだ受信していません)").button("もどる");
         showWithRetry(empty, player, 0)
             .then((res) => { if (!res.canceled && res.selection === 0) openMenu(player); })
@@ -190,10 +213,9 @@ function showDetail(player, name) {
         return;
     }
 
-    const info = describe(json);
     const detail = new ActionFormData()
-        .title(info.title || name) // パズル名(command)をタイトルに
-        .body(`生徒: ${name}\n\n${info.body}`)
+        .title(`${name} のプログラム`)
+        .body(body)
         .button("もどる");
 
     showWithRetry(detail, player, 0)
@@ -202,21 +224,19 @@ function showDetail(player, name) {
             if (!res.canceled && res.selection === 0) openMenu(player);
         })
         .catch(() => {
-            player.sendMessage(`=== ${info.title || name}（${name}）===`);
-            for (const line of info.body.split("\n")) player.sendMessage(line);
+            for (const line of body.split("\n")) player.sendMessage(line);
         });
 }
 
 function chatFallback(player, names) {
     player.sendMessage("[先生メニュー] フォームを表示できないためチャット表示します");
     for (const name of names) {
-        const json = submissions.get(name);
-        if (!json) {
+        const body = buildDetailBody(name);
+        if (!body) {
             player.sendMessage(`--- ${name} : (まだ受信していません) ---`);
             continue;
         }
-        const info = describe(json);
-        player.sendMessage(`--- ${info.title || name}（${name}）---`);
-        for (const line of info.body.split("\n")) player.sendMessage(line);
+        player.sendMessage(`=== ${name} ===`);
+        for (const line of body.split("\n")) player.sendMessage(line);
     }
 }
