@@ -227,6 +227,7 @@ namespace agentControl {
     //% block="くりかえし %times 回"
     //% blockId=agentRepeat
     //% times.defl=4
+    //% handlerStatement=true
     //% weight=80
     export function repeatTimes(times: number, handler: () => void): void {
         // 記録していない(外側ループの 2 回目以降など)ときは実行のみ
