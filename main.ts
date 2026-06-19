@@ -70,6 +70,7 @@ namespace agentControl {
     let program: Command[] = [];
     let containerStack: Command[][] = [];
     let recording = false;
+    let executing = true; // false の場合はエージェントを動かさず記録だけ行う
     let currentCommand = "";
 
     // 先生メニュー用: コマンドごとの最新提出を保持する
@@ -205,8 +206,31 @@ namespace agentControl {
     }
 
     /**
+     * プログラム本体を走らせ、記録・保存・送信を行う。
+     * @param doExecute true ならエージェントを実際に動かす。false なら記録のみ。
+     */
+    function runProgram(command: string, handler: () => void, doExecute: boolean): void {
+        // プログラム開始: バッファをリセットして記録を有効化
+        program = [];
+        containerStack = [program];
+        currentCommand = command;
+        recording = true;
+        executing = doExecute;
+
+        handler();
+
+        // プログラム終了: 記録を止めて 保存・出力・アドオン送信
+        recording = false;
+        executing = true;
+        const json = serializeProgram();
+        storeSubmission(command, json);
+        sayJson(json);
+        sendViaScriptEvent(json);
+    }
+
+    /**
      * チャットコマンドを実行したときに、中のエージェント操作を実行する。
-     * 実行後、行ったプログラムを JSON でチャットに出力する。
+     * 実行後、行ったプログラムを JSON でチャット出力・アドオン送信する。
      * @param command チャットコマンド 例: "go"
      * @param handler 実行するエージェント操作
      */
@@ -215,20 +239,22 @@ namespace agentControl {
     //% weight=100
     export function onChatCommand(command: string, handler: () => void): void {
         player.onChat(command, function () {
-            // プログラム開始: バッファをリセットして記録を有効化
-            program = [];
-            containerStack = [program];
-            currentCommand = command;
-            recording = true;
+            runProgram(command, handler, true);
+        });
+    }
 
-            handler();
-
-            // プログラム終了: 記録を止めて 保存・出力・アドオン送信
-            recording = false;
-            const json = serializeProgram();
-            storeSubmission(command, json);
-            sayJson(json);
-            sendViaScriptEvent(json);
+    /**
+     * チャットコマンドで、組み上げたプログラムを送信する(エージェントは動かさない)。
+     * 実行せずに「作品の設計図」だけを提出したいときに使う。
+     * @param command チャットコマンド 例: "send"
+     * @param handler 送信するエージェント操作
+     */
+    //% block="チャットコマンド %command でプログラムを送信する"
+    //% blockId=agentOnChatSubmit
+    //% weight=95
+    export function onChatSubmit(command: string, handler: () => void): void {
+        player.onChat(command, function () {
+            runProgram(command, handler, false);
         });
     }
 
@@ -241,7 +267,7 @@ namespace agentControl {
     //% blocks.defl=1
     //% weight=90
     export function move(direction: AgentDir, blocks: number = 1): void {
-        agent.move(dirToSix(direction), blocks);
+        if (executing) agent.move(dirToSix(direction), blocks);
         const cmd = new Command("move");
         cmd.direction = dirToString(direction);
         cmd.blocks = blocks;
@@ -255,7 +281,7 @@ namespace agentControl {
     //% block="エージェントの向きを %direction にかえる"
     //% weight=85
     export function turn(direction: AgentTurn): void {
-        agent.turn(direction == AgentTurn.Right ? TurnDirection.Right : TurnDirection.Left);
+        if (executing) agent.turn(direction == AgentTurn.Right ? TurnDirection.Right : TurnDirection.Left);
         const cmd = new Command("turn");
         cmd.direction = turnToString(direction);
         record(cmd);
@@ -274,7 +300,7 @@ namespace agentControl {
     export function repeatTimes(times: number, handler: () => void): void {
         // 記録していない(外側ループの 2 回目以降など)ときは実行のみ
         if (!recording) {
-            for (let i = 0; i < times; i++) handler();
+            if (executing) for (let i = 0; i < times; i++) handler();
             return;
         }
 
@@ -282,14 +308,14 @@ namespace agentControl {
         node.times = times;
         currentContainer().push(node);
 
-        for (let i = 0; i < times; i++) {
-            if (i == 0) {
-                // 最初の 1 回だけ構造を記録する
-                containerStack.push(node.children);
-                handler();
-                containerStack.pop();
-            } else {
-                // 2 回目以降はエージェントを動かすが記録しない
+        // 構造は 1 回だけ記録する
+        containerStack.push(node.children);
+        handler();
+        containerStack.pop();
+
+        // 実行する場合のみ、残り回数ぶんエージェントを動かす(記録はしない)
+        if (executing) {
+            for (let i = 1; i < times; i++) {
                 recording = false;
                 handler();
                 recording = true;
