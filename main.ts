@@ -219,18 +219,22 @@ namespace agentControl {
 
         handler();
 
-        // プログラム終了: 記録を止めて 保存・出力・アドオン送信
+        // プログラム終了: 記録を止めて 保存・アドオン送信
         recording = false;
         executing = true;
         const json = serializeProgram();
         storeSubmission(command, json);
-        sayJson(json);
         sendViaScriptEvent(json);
     }
 
     /**
      * チャットコマンドを実行したときに、中のエージェント操作を実行する。
-     * 実行後、行ったプログラムを JSON でチャット出力・アドオン送信する。
+     *
+     * MakeCode 起動時(=最初だけのタイミング)に一度、エージェントを動かさず
+     * 中身を「なぞって」設計図を送信する(裏側トレース)。
+     * その後、チャットコマンドが実行されたら実際にエージェントを動かす。
+     * これにより生徒はこのブロック 1 つだけ使えばよい(送信用ブロックは不要)。
+     *
      * @param command チャットコマンド 例: "go"
      * @param handler 実行するエージェント操作
      */
@@ -238,23 +242,11 @@ namespace agentControl {
     //% blockId=agentOnChatCommand
     //% weight=100
     export function onChatCommand(command: string, handler: () => void): void {
+        // 起動時: 動かさずに設計図を送信
+        runProgram(command, handler, false);
+        // コマンド実行時: 実際にエージェントを動かす
         player.onChat(command, function () {
             runProgram(command, handler, true);
-        });
-    }
-
-    /**
-     * チャットコマンドで、組み上げたプログラムを送信する(エージェントは動かさない)。
-     * 実行せずに「作品の設計図」だけを提出したいときに使う。
-     * @param command チャットコマンド 例: "send"
-     * @param handler 送信するエージェント操作
-     */
-    //% block="チャットコマンド %command でプログラムを送信する"
-    //% blockId=agentOnChatSubmit
-    //% weight=95
-    export function onChatSubmit(command: string, handler: () => void): void {
-        player.onChat(command, function () {
-            runProgram(command, handler, false);
         });
     }
 
