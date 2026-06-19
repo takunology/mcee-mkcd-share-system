@@ -176,15 +176,15 @@ function formatSteps(program, depth, lines) {
     const pad = "| ".repeat(depth); // depth 0 は "" / 入れ子で "| ", "| | " と増える
     for (const c of program) {
         if (c.type === "move") {
-            lines.push(`${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動`);
+            lines.push(`${pad}エージェントを ${dirLabel(c.direction)} に ${c.blocks} ブロック移動させる`);
         } else if (c.type === "turn") {
-            lines.push(`${pad}むきを ${turnLabel(c.direction)} にかえる`);
+            lines.push(`${pad}エージェントの向きを ${turnLabel(c.direction)} にかえる`);
         } else if (c.type === "setItem") {
-            lines.push(`${pad}${blockName(c.item)} を ${c.count} コ スロット ${c.slot} 番にセット`);
+            lines.push(`${pad}エージェントに ${blockName(c.item)} を ${c.count} コ スロット ${c.slot} 番に設定させる`);
         } else if (c.type === "place") {
-            lines.push(`${pad}${dirLabel(c.direction)} へ ブロックを置く`);
+            lines.push(`${pad}エージェントに ${dirLabel(c.direction)} へ置かせる`);
         } else if (c.type === "repeat") {
-            lines.push(`${pad}くりかえし ${c.times} 回:`);
+            lines.push(`${pad}くりかえし ${c.times} 回`);
             formatSteps(c.children || [], depth + 1, lines);
             lines.push(`${pad}+--`); // ループの閉じ線(角)
         }
@@ -201,7 +201,7 @@ function describe(json) {
     }
     const lines = [];
     // 先頭にチャットコマンド行(MakeCode のエントリブロックに対応)
-    lines.push(`チャットコマンド「${data.command || ""}」を実行したとき`);
+    lines.push(`チャットコマンド ${data.command || ""} を実行したとき`);
     formatSteps(data.program || [], 0, lines);
     if (lines.length === 1) lines.push("(手順なし)");
     return {
