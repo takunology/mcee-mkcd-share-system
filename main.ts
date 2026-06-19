@@ -70,6 +70,18 @@ namespace agentControl {
     let executing = true; // false の場合はエージェントを動かさず記録だけ行う
     let currentCommand = "";
 
+    // 起動時の自動トレース(裏側送信)を遅延実行するための待ち行列
+    class Pending {
+        command: string;
+        handler: () => void;
+        constructor(command: string, handler: () => void) {
+            this.command = command;
+            this.handler = handler;
+        }
+    }
+    let pendingTraces: Pending[] = [];
+    let traceScheduled = false;
+
     function currentContainer(): Command[] {
         return containerStack[containerStack.length - 1];
     }
@@ -212,8 +224,22 @@ namespace agentControl {
     //% blockId=agentOnChatCommand
     //% weight=100
     export function onChatCommand(command: string, handler: () => void): void {
-        // 起動時: 動かさずに設計図を送信
-        runProgram(command, handler, false);
+        // 起動直後はまだ送信できないことがあるため、少し待ってから設計図を送る。
+        // 複数ブロックぶんを順番に処理し、共有バッファの競合を避ける。
+        pendingTraces.push(new Pending(command, handler));
+        if (!traceScheduled) {
+            traceScheduled = true;
+            loops.forever(function () {
+                loops.pause(2000); // ワールド/プレイヤーの準備を待つ
+                if (pendingTraces.length > 0) {
+                    const list = pendingTraces;
+                    pendingTraces = [];
+                    for (let i = 0; i < list.length; i++) {
+                        runProgram(list[i].command, list[i].handler, false);
+                    }
+                }
+            });
+        }
         // コマンド実行時: 実際にエージェントを動かす
         player.onChat(command, function () {
             runProgram(command, handler, true);
