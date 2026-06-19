@@ -139,18 +139,30 @@ function turnLabel(d) {
     return d === "right" ? "みぎ" : "ひだり";
 }
 
+// Minecraft カラーコード(§)。階層ごとに色を変えて見やすくする。
+const COLOR_RESET = "§r";
+const COLOR_COMMAND = "§e"; // チャットコマンド行: 黄
+const DEPTH_COLORS = ["§f", "§b", "§a", "§d", "§6"]; // 白/水/緑/紫/金
+
+function depthColor(depth) {
+    return DEPTH_COLORS[depth % DEPTH_COLORS.length];
+}
+
 // プログラムを手順の行配列に変換する。
-// 入れ子(くりかえし等)の中身は階層ごとに先頭へ "| " を足して左側を囲う。
+// 入れ子(くりかえし等)の中身は階層ごとに先頭へ "| " を足して左側を囲い、
+// 中身の後ろに "└──" を出して閉じる。階層ごとに色を変える。
 function formatSteps(program, depth, lines) {
     const pad = "| ".repeat(depth); // depth 0 は "" / 入れ子で "| ", "| | " と増える
+    const color = depthColor(depth);
     for (const c of program) {
         if (c.type === "move") {
-            lines.push(`${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動`);
+            lines.push(`${color}${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動${COLOR_RESET}`);
         } else if (c.type === "turn") {
-            lines.push(`${pad}むきを ${turnLabel(c.direction)} にかえる`);
+            lines.push(`${color}${pad}むきを ${turnLabel(c.direction)} にかえる${COLOR_RESET}`);
         } else if (c.type === "repeat") {
-            lines.push(`${pad}くりかえし ${c.times} 回:`);
+            lines.push(`${color}${pad}くりかえし ${c.times} 回:${COLOR_RESET}`);
             formatSteps(c.children || [], depth + 1, lines);
+            lines.push(`${color}${pad}└──${COLOR_RESET}`); // ループの閉じ線(角)
         }
     }
 }
@@ -165,7 +177,7 @@ function describe(json) {
     }
     const lines = [];
     // 先頭にチャットコマンド行(MakeCode のエントリブロックに対応)
-    lines.push(`チャットコマンド「${data.command || ""}」を実行したとき`);
+    lines.push(`${COLOR_COMMAND}チャットコマンド「${data.command || ""}」を実行したとき${COLOR_RESET}`);
     formatSteps(data.program || [], 0, lines);
     if (lines.length === 1) lines.push("(手順なし)");
     return {
@@ -187,7 +199,7 @@ function showDetail(player, name) {
     const info = describe(json);
     const detail = new ActionFormData()
         .title(info.title || name) // パズル名(command)をタイトルに
-        .body(`生徒: ${name}\n\n${info.body}`)
+        .body(`§7生徒: ${name}§r\n\n${info.body}`)
         .button("もどる");
 
     showWithRetry(detail, player, 0)
