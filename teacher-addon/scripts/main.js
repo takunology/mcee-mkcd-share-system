@@ -139,9 +139,10 @@ function turnLabel(d) {
     return d === "right" ? "みぎ" : "ひだり";
 }
 
-// プログラムを手順の行配列に変換する(入れ子は階層ごとに半角2スペースでインデント)
+// プログラムを手順の行配列に変換する。
+// 入れ子(くりかえし等)の中身は階層ごとに先頭へ "| " を足して左側を囲う。
 function formatSteps(program, depth, lines) {
-    const pad = "  ".repeat(depth);
+    const pad = "| ".repeat(depth); // depth 0 は "" / 入れ子で "| ", "| | " と増える
     for (const c of program) {
         if (c.type === "move") {
             lines.push(`${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動`);
@@ -163,10 +164,13 @@ function describe(json) {
         return { title: "", body: json };
     }
     const lines = [];
+    // 先頭にチャットコマンド行(MakeCode のエントリブロックに対応)
+    lines.push(`チャットコマンド「${data.command || ""}」を実行したとき`);
     formatSteps(data.program || [], 0, lines);
+    if (lines.length === 1) lines.push("(手順なし)");
     return {
         title: data.command || "",
-        body: lines.length ? lines.join("\n") : "(手順なし)"
+        body: lines.join("\n")
     };
 }
 
