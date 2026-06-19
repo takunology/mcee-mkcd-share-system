@@ -1,0 +1,151 @@
+// 先生用ビューア アドオン (behavior pack / Script API)
+//
+// 役割:
+//  1. 生徒の MakeCode から /scriptevent で送られる JSON を集約・保存する。
+//  2. 先生がブレイズロッドを使う(右クリック)と、生徒一覧メニューを表示し、
+//     選んだ生徒のプログラム(JSON)を見られるようにする。
+//
+// 注意:
+//  - Minecraft Education では @minecraft/server-ui のフォーム表示が制限される場合がある。
+//    フォームが出せない場合はチャット出力にフォールバックする。
+//  - dependencies のバージョンは、お使いの MEE が提供する Script API に合わせて
+//    manifest.json 側を調整する必要がある場合がある。
+
+import { world, system } from "@minecraft/server";
+import { ActionFormData } from "@minecraft/server-ui";
+
+// 生徒名 -> 完成した JSON 文字列
+const submissions = new Map();
+
+// 生徒名 -> 受信途中のチャンク { total, parts: Map<part, chunk> }
+const buffers = new Map();
+
+// ------------------------------------------------------------------
+// デモ用ダミーデータ(MakeCode 連携が未配線でもメニューを試せるように)
+// ------------------------------------------------------------------
+function seedDummyData() {
+    submissions.set(
+        "ゆうき",
+        '{"command":"run","program":[{"type":"move","direction":"forward","blocks":3},{"type":"turn","direction":"right"}]}'
+    );
+    submissions.set(
+        "さくら",
+        '{"command":"go","program":[{"type":"repeat","times":4,"children":[{"type":"move","direction":"forward","blocks":1},{"type":"turn","direction":"right"}]}]}'
+    );
+}
+seedDummyData();
+
+// ------------------------------------------------------------------
+// 受信: /scriptevent puzzle:submit <student>|<part>/<total>|<chunk>
+//   例: scriptevent puzzle:submit ゆうき|1/2|{"command":"run",...
+// ------------------------------------------------------------------
+system.afterEvents.scriptEventReceive.subscribe(
+    (ev) => {
+        if (ev.id !== "puzzle:submit") return;
+
+        const segs = ev.message.split("|");
+        if (segs.length < 3) return;
+
+        // sourceEntity があればそれを正とし、無ければメッセージ先頭の名前を使う
+        let student = segs[0];
+        if (ev.sourceEntity && ev.sourceEntity.typeId === "minecraft:player") {
+            student = ev.sourceEntity.name;
+        }
+
+        const [partStr, totalStr] = segs[1].split("/");
+        const part = parseInt(partStr, 10);
+        const total = parseInt(totalStr, 10);
+        const chunk = segs.slice(2).join("|");
+        if (!part || !total) return;
+
+        let buf = buffers.get(student);
+        if (!buf || buf.total !== total) {
+            buf = { total: total, parts: new Map() };
+            buffers.set(student, buf);
+        }
+        buf.parts.set(part, chunk);
+
+        if (buf.parts.size === total) {
+            let json = "";
+            for (let i = 1; i <= total; i++) json += buf.parts.get(i) || "";
+            submissions.set(student, json);
+            buffers.delete(student);
+            world.sendMessage(`[受信] ${student} のプログラムを保存しました`);
+        }
+    },
+    { namespaces: ["puzzle"] }
+);
+
+// ------------------------------------------------------------------
+// 表示: ブレイズロッド使用で先生メニュー
+// ------------------------------------------------------------------
+world.afterEvents.itemUse.subscribe((ev) => {
+    if (!ev.itemStack || ev.itemStack.typeId !== "minecraft:blaze_rod") return;
+    const player = ev.source;
+    if (!player || player.typeId !== "minecraft:player") return;
+    // フォームは event tick 内で直接 show できないため system.run で遅延する
+    system.run(() => openMenu(player));
+});
+
+// UserBusy(チャット等が開いている)の場合に少しリトライする
+function showWithRetry(form, player, attempt) {
+    return form.show(player).then((res) => {
+        if (res.canceled && res.cancelationReason === "UserBusy" && attempt < 20) {
+            return new Promise((resolve) => {
+                system.runTimeout(() => resolve(showWithRetry(form, player, attempt + 1)), 10);
+            });
+        }
+        return res;
+    });
+}
+
+function openMenu(player) {
+    const names = Array.from(submissions.keys());
+
+    if (names.length === 0) {
+        player.sendMessage("[先生メニュー] まだ提出はありません");
+        return;
+    }
+
+    const menu = new ActionFormData()
+        .title("先生メニュー: 生徒の提出")
+        .body(`提出 ${names.length} 件。生徒を選んでください。`);
+    for (const name of names) menu.button(name);
+
+    showWithRetry(menu, player, 0)
+        .then((res) => {
+            if (res.canceled) return;
+            const name = names[res.selection];
+            showDetail(player, name);
+        })
+        .catch(() => {
+            // フォームが使えない環境ではチャットにフォールバック
+            chatFallback(player, names);
+        });
+}
+
+function showDetail(player, name) {
+    const json = submissions.get(name) || "(なし)";
+    const detail = new ActionFormData()
+        .title(`${name} のプログラム`)
+        .body(json)
+        .button("もどる");
+
+    showWithRetry(detail, player, 0)
+        .then((res) => {
+            // 「もどる」または閉じたら一覧へ戻る
+            if (!res.canceled && res.selection === 0) openMenu(player);
+        })
+        .catch(() => {
+            player.sendMessage(`=== ${name} ===`);
+            player.sendMessage(json);
+        });
+}
+
+function chatFallback(player, names) {
+    player.sendMessage("[先生メニュー] フォームを表示できないためチャット表示します");
+    for (const name of names) {
+        player.sendMessage(`--- ${name} ---`);
+        player.sendMessage(submissions.get(name) || "(なし)");
+    }
+}

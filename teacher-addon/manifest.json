@@ -1,0 +1,29 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "Puzzle Teacher Viewer",
+        "description": "生徒のエージェントプログラム(JSON)を集約し、ブレイズロッドで先生が閲覧するアドオン",
+        "uuid": "4b9a1e2c-7d3f-4c8a-9e21-1a2b3c4d5e6f",
+        "version": [0, 0, 1],
+        "min_engine_version": [1, 21, 0]
+    },
+    "modules": [
+        {
+            "type": "script",
+            "language": "javascript",
+            "uuid": "8f2c5d10-3a6b-4e9d-b7c1-2d3e4f5a6b70",
+            "version": [0, 0, 1],
+            "entry": "scripts/main.js"
+        }
+    ],
+    "dependencies": [
+        {
+            "module_name": "@minecraft/server",
+            "version": "1.13.0"
+        },
+        {
+            "module_name": "@minecraft/server-ui",
+            "version": "1.2.0"
+        }
+    ]
+}
