@@ -149,6 +149,10 @@ function formatSteps(program, depth, lines) {
             lines.push(`${pad}${dirLabel(c.direction)}に ${c.blocks} ブロック移動`);
         } else if (c.type === "turn") {
             lines.push(`${pad}むきを ${turnLabel(c.direction)} にかえる`);
+        } else if (c.type === "setItem") {
+            lines.push(`${pad}ブロック(id:${c.item}) を ${c.count} コ スロット ${c.slot} 番にセット`);
+        } else if (c.type === "place") {
+            lines.push(`${pad}${dirLabel(c.direction)} へ ブロックを置く`);
         } else if (c.type === "repeat") {
             lines.push(`${pad}くりかえし ${c.times} 回:`);
             formatSteps(c.children || [], depth + 1, lines);

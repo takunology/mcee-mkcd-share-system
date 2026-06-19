@@ -44,26 +44,23 @@ enum AgentTurn {
 //% weight=100 color=#A05A2C icon="" block="エージェント"
 namespace agentControl {
     class Command {
-        type: string;        // "move" | "turn" | "repeat"
-        direction: string;   // move / turn 用
+        type: string;        // "move" | "turn" | "repeat" | "setItem" | "place"
+        direction: string;   // move / turn / place 用
         blocks: number;      // move 用
         times: number;       // repeat 用
         children: Command[]; // repeat 用
+        item: number;        // setItem 用(ブロック/アイテム ID)
+        count: number;       // setItem 用(個数)
+        slot: number;        // setItem 用(スロット番号)
         constructor(type: string) {
             this.type = type;
             this.direction = "";
             this.blocks = 0;
             this.times = 0;
             this.children = [];
-        }
-    }
-
-    class Submission {
-        command: string;
-        json: string;
-        constructor(command: string, json: string) {
-            this.command = command;
-            this.json = json;
+            this.item = 0;
+            this.count = 0;
+            this.slot = 0;
         }
     }
 
@@ -72,10 +69,6 @@ namespace agentControl {
     let recording = false;
     let executing = true; // false の場合はエージェントを動かさず記録だけ行う
     let currentCommand = "";
-
-    // 先生メニュー用: コマンドごとの最新提出を保持する
-    let submissions: Submission[] = [];
-    let viewIndex = -1;
 
     function currentContainer(): Command[] {
         return containerStack[containerStack.length - 1];
@@ -141,6 +134,12 @@ namespace agentControl {
         } else if (c.type == "repeat") {
             s += "," + jsonString("times") + ":" + c.times;
             s += "," + jsonString("children") + ":" + serializeList(c.children);
+        } else if (c.type == "setItem") {
+            s += "," + jsonString("item") + ":" + c.item;
+            s += "," + jsonString("count") + ":" + c.count;
+            s += "," + jsonString("slot") + ":" + c.slot;
+        } else if (c.type == "place") {
+            s += "," + jsonString("direction") + ":" + jsonString(c.direction);
         }
         s += "}";
         return s;
@@ -165,20 +164,6 @@ namespace agentControl {
     }
 
     /**
-     * JSON 文字列をチャットへ分割出力する(可視出力 MVP)
-     */
-    function sayJson(json: string): void {
-        const chunkSize = 200;
-        const total = Math.ceil(json.length / chunkSize);
-        player.say("PZL_BEGIN total=" + total);
-        for (let i = 0; i < total; i++) {
-            const part = json.substr(i * chunkSize, chunkSize);
-            player.say("PZL " + (i + 1) + "/" + total + " " + part);
-        }
-        player.say("PZL_END");
-    }
-
-    /**
      * JSON を /scriptevent でアドオンへ送る(チャンク分割)。
      *   scriptevent puzzle:submit <名前>|<part>/<total>|<chunk>
      * 名前はプレースホルダ "me" を送り、アドオン側で実行プレイヤー名に置き換える。
@@ -193,20 +178,7 @@ namespace agentControl {
     }
 
     /**
-     * 提出をコマンドごとに保存する(同じコマンドは最新で上書き)
-     */
-    function storeSubmission(command: string, json: string): void {
-        for (let i = 0; i < submissions.length; i++) {
-            if (submissions[i].command == command) {
-                submissions[i].json = json;
-                return;
-            }
-        }
-        submissions.push(new Submission(command, json));
-    }
-
-    /**
-     * プログラム本体を走らせ、記録・保存・送信を行う。
+     * プログラム本体を走らせ、記録・送信を行う。
      * @param doExecute true ならエージェントを実際に動かす。false なら記録のみ。
      */
     function runProgram(command: string, handler: () => void, doExecute: boolean): void {
@@ -219,12 +191,10 @@ namespace agentControl {
 
         handler();
 
-        // プログラム終了: 記録を止めて 保存・アドオン送信
+        // プログラム終了: 記録を止めて アドオン送信
         recording = false;
         executing = true;
-        const json = serializeProgram();
-        storeSubmission(command, json);
-        sendViaScriptEvent(json);
+        sendViaScriptEvent(serializeProgram());
     }
 
     /**
@@ -316,29 +286,36 @@ namespace agentControl {
     }
 
     /**
-     * 次の提出を表示する(ページめくり式)
+     * エージェントの持ち物スロットに、選んだブロックを指定個数セットする。
+     * @param item セットするブロック/アイテム
+     * @param count 個数
+     * @param slot スロット番号(1 から)
      */
-    function showNextSubmission(): void {
-        if (submissions.length == 0) {
-            player.say("[先生メニュー] まだ提出はありません");
-            return;
-        }
-        viewIndex = (viewIndex + 1) % submissions.length;
-        const s = submissions[viewIndex];
-        player.say("=== 先生メニュー " + (viewIndex + 1) + "/" + submissions.length + " : " + s.command + " ===");
-        sayJson(s.json);
+    //% block="エージェントに %item を %count コ スロット %slot 番に設定させる"
+    //% item.shadow=minecraftBlock
+    //% count.defl=1 slot.defl=1
+    //% blockId=agentSetItem
+    //% weight=75
+    export function setAgentItem(item: number, count: number, slot: number): void {
+        if (executing) agent.setItem(item, count, slot);
+        const cmd = new Command("setItem");
+        cmd.item = item;
+        cmd.count = count;
+        cmd.slot = slot;
+        record(cmd);
     }
 
     /**
-     * ブレイズロッドを使うと、提出されたプログラム(JSON)を順に表示する。
-     * ※ MakeCode はプレイヤーごとに動くため、同じインスタンスで記録した提出のみ表示できる。
+     * エージェントが、選択中スロットのブロックを指定方向に置く。
+     * @param direction 置く方向
      */
-    //% block="ブレイズロッドで先生メニューを開く"
-    //% blockId=agentTeacherMenu
-    //% weight=40
-    export function enableTeacherMenu(): void {
-        player.onItemInteracted(BLAZE_ROD, function () {
-            showNextSubmission();
-        });
+    //% block="エージェントに %direction へ置かせる"
+    //% blockId=agentPlace
+    //% weight=70
+    export function placeBlock(direction: AgentDir): void {
+        if (executing) agent.place(dirToSix(direction));
+        const cmd = new Command("place");
+        cmd.direction = dirToString(direction);
+        record(cmd);
     }
 }
