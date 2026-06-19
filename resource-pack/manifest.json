@@ -4,7 +4,7 @@
         "name": "Puzzle Teacher Viewer UI",
         "description": "先生メニューのダイアログ(server_form)を広げる JSON UI 上書き",
         "uuid": "6c1f2a3d-8e4b-4f5c-a012-3b4c5d6e7f80",
-        "version": [0, 0, 1],
+        "version": [1, 0, 0],
         "min_engine_version": [1, 21, 0]
     },
     "modules": [
