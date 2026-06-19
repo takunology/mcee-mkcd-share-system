@@ -1,12 +1,11 @@
 {
   "namespace": "server_form",
 
-  "//": "先生メニューのダイアログ(long_form)を広げる。バニラは size [225,200]。",
   "long_form@common_dialogs.main_panel_no_buttons": {
     "$title_panel": "common_dialogs.standard_title_label",
     "$title_size": [ "100% - 15px", 10 ],
     "$title_max_size": [ "100% - 15px", 10 ],
-    "size": [ 420, 260 ],
+    "size": [ 640, 260 ],
     "$text_name": "#title_text",
     "$title_text_binding_type": "none",
     "$child_control": "server_form.long_form_panel",
@@ -17,7 +16,7 @@
     "$title_panel": "common_dialogs.standard_title_label",
     "$title_size": [ "100% - 15px", 10 ],
     "$title_max_size": [ "100% - 15px", 10 ],
-    "size": [ 420, 260 ],
+    "size": [ 640, 260 ],
     "$text_name": "#title_text",
     "$title_text_binding_type": "none",
     "$child_control": "server_form.custom_form_panel",
