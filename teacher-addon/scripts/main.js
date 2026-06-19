@@ -106,9 +106,9 @@ function openMenu(player) {
 
     const menu = new ActionFormData()
         .title("先生メニュー: プレイヤー")
-        .body(`接続中 ${names.length} 人。✔=プログラム受信済み / —=未受信`);
+        .body(`接続中 ${names.length} 人\n[済]=プログラム受信済み / [未]=未受信`);
     for (const name of names) {
-        menu.button(submissions.has(name) ? `${name}  ✔` : `${name}  —`);
+        menu.button(submissions.has(name) ? `${name}  [済]` : `${name}  [未]`);
     }
 
     showWithRetry(menu, player, 0)
