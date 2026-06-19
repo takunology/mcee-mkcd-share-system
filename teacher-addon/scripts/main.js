@@ -34,17 +34,12 @@ world.afterEvents.playerSpawn.subscribe((ev) => {
 //   例: scriptevent puzzle:submit ゆうき|1/2|{"command":"run",...
 // ------------------------------------------------------------------
 system.afterEvents.scriptEventReceive.subscribe((ev) => {
-    // デバッグ: あらゆる scriptevent の到達を確認(動作確認後に削除)
-    world.sendMessage(`[debug] scriptevent id=${ev.id}`);
-
     if (ev.id !== "puzzle:submit") return;
 
     // sourceEntity があればそれを正とし、無ければメッセージ先頭の名前を使う
     const srcName = ev.sourceEntity && ev.sourceEntity.typeId === "minecraft:player"
         ? ev.sourceEntity.name
         : null;
-    // デバッグ: 受信したか / 名前が取れるか を確認(動作確認後に削除可)
-    world.sendMessage(`[debug] recv id=${ev.id} src=${srcName || "none"}`);
 
     const segs = ev.message.split("|");
     if (segs.length < 3) return;

@@ -183,11 +183,6 @@ namespace agentControl {
      * 名前はプレースホルダ "me" を送り、アドオン側で実行プレイヤー名に置き換える。
      */
     function sendViaScriptEvent(json: string): void {
-        // --- 診断(切り分け後に削除): player.execute の挙動を確認する ---
-        player.execute("say EXEC_TEST");
-        player.execute("scriptevent puzzle:ping noslash");
-        player.execute("/scriptevent puzzle:ping2 withslash");
-        // --- 本送信 ---
         const chunkSize = 200;
         const total = Math.ceil(json.length / chunkSize);
         for (let i = 0; i < total; i++) {
